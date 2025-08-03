@@ -4,13 +4,13 @@
 
 # Radio Station Database
 
-A comprehensive Python application that creates a SQLite database of radio stations with FCC data, LLM-discovered genre classifications, and preprocessed signal propagation data.
+A Python script which creates and maintains a SQLite database of radio stations with FCC data, LLM-discovered genre classifications, and preprocessed signal propagation data.
 
 ## Features
 
 - **FCC Data Integration**: Fetches complete FM/AM radio station data from official FCC sources
 - **Signal Propagation Data**: Preprocesses station location, power, and terrain data to enable downstream GPS-based signal strength estimation
-- **LLM Genre Discovery**: Uses powerful LLMs (Gemini 2.5 Pro/Claude Opus 4) to discover station genres from web sources
+- **LLM Genre Discovery**: Uses powerful LLMs (Gemini 2.5) to discover station genres from web sources
 - **Deduplication**: Handles duplicate stations across multiple data sources
 - **SQLite Database**: Optimized for mobile app consumption with proper indexing
 - **Professional CLI**: Rich-formatted command-line interface with Typer
@@ -80,8 +80,13 @@ The SQLite database contains:
 
 ## Data Statistics
 
-<!-- TODO: Populate with real database statistics using GitHub Actions -->
-Current database contains: _Statistics will be auto-generated here_
+The database is automatically updated daily via GitHub Actions with genre information from Gemini AI.
+
+**Current Status:**
+- **Total Stations:** 15,791 (11,442 FM + 4,349 AM)
+- **With Genres:** _Updated daily via automation_
+
+Genre detection progress is tracked in the [GitHub Actions](../../actions) tab.
 
 ## Development
 
@@ -114,13 +119,27 @@ FM_FIELDS = {
 rye run update-licenses
 ```
 
+## Automated Features
+
+- [x] **LLM Genre Discovery**: Daily automated genre detection using Gemini with Google Search grounding
+- [x] **GitHub Actions Integration**: Automated daily processing with quota management
+- [x] **Progress Tracking**: Real-time statistics and summaries in GitHub Actions
+
 ## Future Features
 
-- [ ] Signal propagation preprocessing with terrain data for downstream GPS-based calculations
-- [ ] LLM-based genre discovery from Wikipedia, station websites, and web sources
+- [ ] Signal propagation preprocessing with terrain data for downstream GPS-based calculations  
 - [ ] Advanced deduplication algorithms
 - [ ] Compressed database deployment via GitHub Pages
 - [ ] Mobile app integration APIs
+
+## GitHub Actions Setup
+
+This repository uses GitHub Actions to automatically detect radio station genres daily:
+
+1. **Set up Gemini API Key**: Add your Gemini API key as a repository secret named `GEMINI_API_KEY`
+2. **Automatic Processing**: The workflow runs daily at 2 AM UTC, processing up to 500 stations
+3. **Smart Quota Management**: Automatically stops when the daily grounding limit is reached
+4. **Database Updates**: Commits updated database back to the repository with progress tracking
 
 ## License
 

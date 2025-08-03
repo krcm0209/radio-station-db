@@ -1,0 +1,140 @@
+name: Daily Genre Detection
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  detect-genres:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # Need to fetch full history to commit changes back
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    
+    - name: Install rye
+      run: |
+        curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
+        echo "$HOME/.rye/shims" >> $GITHUB_PATH
+    
+    - name: Install dependencies
+      run: |
+        rye sync
+    
+    - name: Check current database stats
+      id: check_stats
+      run: |
+        echo "=== Before Genre Detection ==="
+        stats_output=$(rye run radio-db stats)
+        echo "$stats_output"
+        
+        # Extract the count of stations without genres
+        without_genres=$(echo "$stats_output" | grep "STATIONS_WITHOUT_GENRES=" | cut -d'=' -f2)
+        echo "STATIONS_WITHOUT_GENRES=$without_genres" >> $GITHUB_OUTPUT
+        
+        if [ "$without_genres" -eq 0 ]; then
+          echo "✅ All stations already have genres! No processing needed."
+        else
+          echo "📻 Found $without_genres stations without genres - proceeding with detection"
+        fi
+    
+    - name: Run genre detection
+      if: steps.check_stats.outputs.STATIONS_WITHOUT_GENRES != '0'
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        # Process all stations without genres until quota is naturally exceeded
+        # The detector will automatically stop when Gemini quota limit is hit
+        rye run radio-db detect-genres --limit 100000
+    
+    - name: Check final database stats
+      if: steps.check_stats.outputs.STATIONS_WITHOUT_GENRES != '0'
+      run: |
+        echo "=== After Genre Detection ==="
+        rye run radio-db stats
+        
+        # Count updated stations
+        python -c "
+        import sqlite3
+        conn = sqlite3.connect('radio_stations.db')
+        remaining = conn.execute('SELECT COUNT(*) FROM stations WHERE genre IS NULL OR genre = \"\"').fetchone()[0]
+        with_genres = conn.execute('SELECT COUNT(*) FROM stations WHERE genre IS NOT NULL AND genre != \"\"').fetchone()[0]
+        total = conn.execute('SELECT COUNT(*) FROM stations').fetchone()[0]
+        
+        print(f'Stations with genres: {with_genres}')
+        print(f'Stations without genres: {remaining}')
+        print(f'Total stations: {total}')
+        conn.close()
+        "
+    
+    - name: Commit updated database
+      if: steps.check_stats.outputs.STATIONS_WITHOUT_GENRES != '0'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Check if database was modified
+        if git diff --quiet radio_stations.db; then
+          echo "No changes to database"
+        else
+          git add radio_stations.db
+          git commit -m "🤖 Daily genre detection update"
+          
+          git push
+          echo "Database updated and pushed to repository"
+        fi
+    
+    - name: Generate summary
+      if: always()
+      run: |
+        echo "## 📻 Daily Genre Detection Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ steps.check_stats.outputs.STATIONS_WITHOUT_GENRES }}" = "0" ]; then
+          echo "✅ **Status:** All stations already have genres - no processing needed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        python -c "
+        import sqlite3
+        from datetime import datetime
+        
+        conn = sqlite3.connect('radio_stations.db')
+        
+        total = conn.execute('SELECT COUNT(*) FROM stations').fetchone()[0]
+        with_genres = conn.execute('SELECT COUNT(*) FROM stations WHERE genre IS NOT NULL AND genre != \"\"').fetchone()[0]
+        without_genres = conn.execute('SELECT COUNT(*) FROM stations WHERE genre IS NULL OR genre = \"\"').fetchone()[0]
+        
+        progress = (with_genres / total) * 100 if total > 0 else 0
+        
+        print(f'**Progress:** {with_genres:,} / {total:,} stations ({progress:.1f}%)')
+        print(f'**Remaining:** {without_genres:,} stations')
+        print(f'**Updated:** {datetime.now().strftime(\"%Y-%m-%d %H:%M UTC\")}')
+        
+        # Show top genres
+        print('\\n**Top Genres:**')
+        top_genres = conn.execute('''
+            SELECT genre, COUNT(*) as count 
+            FROM stations 
+            WHERE genre IS NOT NULL AND genre != \"\"
+            GROUP BY genre 
+            ORDER BY count DESC 
+            LIMIT 10
+        ''').fetchall()
+        
+        for genre, count in top_genres:
+            print(f'- {genre}: {count:,} stations')
+        
+        conn.close()
+        " >> $GITHUB_STEP_SUMMARY

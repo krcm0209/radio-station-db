@@ -1,0 +1,76 @@
+name: Update Third-Party Licenses
+
+on:
+  push:
+    paths:
+      - 'pyproject.toml'
+      - 'requirements.lock'
+      - 'requirements-dev.lock'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  update-licenses:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    
+    - name: Install rye
+      run: |
+        curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
+        echo "$HOME/.rye/shims" >> $GITHUB_PATH
+    
+    - name: Install dependencies
+      run: |
+        rye sync
+    
+    - name: Update third-party licenses
+      run: |
+        echo "Updating third-party license notices..."
+        rye run update-licenses
+    
+    - name: Check for changes
+      run: |
+        if git diff --quiet THIRD_PARTY_NOTICES.md; then
+          echo "No changes to license notices"
+          echo "CHANGES_DETECTED=false" >> $GITHUB_ENV
+        else
+          echo "License notices updated"
+          echo "CHANGES_DETECTED=true" >> $GITHUB_ENV
+        fi
+    
+    - name: Commit updated licenses
+      if: env.CHANGES_DETECTED == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        git add THIRD_PARTY_NOTICES.md
+        git commit -m "📄 Update third-party license notices"
+        
+        git push
+        echo "License notices updated and pushed to repository"
+    
+    - name: Generate summary
+      if: always()
+      run: |
+        echo "## 📄 Third-Party License Update" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "$CHANGES_DETECTED" = "true" ]; then
+          echo "✅ **Status:** License notices updated successfully" >> $GITHUB_STEP_SUMMARY
+          echo "📦 **Trigger:** Dependency changes detected" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "ℹ️ **Status:** No changes needed - licenses up to date" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "🕒 **Updated:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY

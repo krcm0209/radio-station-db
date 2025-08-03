@@ -9,6 +9,8 @@ dependencies = [
     "requests>=2.31.0",
     "pydantic>=2.11.7",
     "typer>=0.16.0",
+    "python-dotenv>=1.1.1",
+    "google-genai>=1.28.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.13"

@@ -3,14 +3,16 @@
 import sqlite3
 from pathlib import Path
 
+
 def init_db(db_path: str = "radio_stations.db") -> None:
     """Initialize database with schema."""
     schema_path = Path(__file__).parent / "schema.sql"
     schema_sql = schema_path.read_text()
-    
+
     conn = sqlite3.connect(db_path)
     conn.executescript(schema_sql)
     conn.close()
+
 
 def get_connection(db_path: str = "radio_stations.db") -> sqlite3.Connection:
     """Get database connection with proper configuration."""
